@@ -1,0 +1,50 @@
+1. A -> {B,C}: deliver to BOTH B and C
+2. A -> {B,C}, B/C -> {D,E}: deliver to BOTH D and E
+3. A -> {B,C,D}, B -> E, C -> {E,F}, D -> F: deliver to BOTH E and F
+Choose 1, 2 or 3: Probability for A -> B [0 to 1]: Probability for A -> C [0 to 1]: Probability for B -> D [0 to 1]: Probability for B -> E [0 to 1]: Probability for C -> D [0 to 1]: Probability for C -> E [0 to 1]: 
+LINK ETX VALUES
+A -> B: 1.250000
+A -> C: 1.428571
+B -> D: 1.111111
+B -> E: 2.500000
+C -> D: 2.000000
+C -> E: 1.176471
+
+RELAY TABLES (relay already has the packet)
+Source    Target        ETX
+B         D             1.111111
+B         E             2.500000
+B         D AND E       2.547281
+C         D             2.000000
+C         E             1.176471
+C         D AND E       2.095390
+
+FIXED ROUTE COMPARISON
+Via B to D AND E: 3.797281
+Via C to D AND E: 3.523961
+
+FINAL SOURCE TABLE
+Source    Target        ETX
+A         D only        2.307329
+A         E only        2.578223
+A         D AND E       3.031289
+
+Forwarding table: deliver the same packet to BOTH D and E
+1 = already has packet, 0 = does not have packet. A always has it.
+Some configurations may not occur for particular probabilities.
+B C D E     Next sender     Remaining ETX
+0 0 0 0     A               3.031289
+0 1 0 0     C               2.095390
+0 1 0 1     C               2.000000
+0 1 1 0     C               1.176471
+0 1 1 1     DONE            0.000000
+1 0 0 0     B               2.547281
+1 0 0 1     B               1.111111
+1 0 1 0     B               2.500000
+1 0 1 1     DONE            0.000000
+1 1 0 0     C               1.686981
+1 1 0 1     B               1.111111
+1 1 1 0     C               1.176471
+1 1 1 1     DONE            0.000000
+
+Final ETX from A to BOTH D and E = 3.031289

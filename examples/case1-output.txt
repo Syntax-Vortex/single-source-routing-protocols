@@ -1,0 +1,20 @@
+1. A -> {B,C}: deliver to BOTH B and C
+2. A -> {B,C}, B/C -> {D,E}: deliver to BOTH D and E
+3. A -> {B,C,D}, B -> E, C -> {E,F}, D -> F: deliver to BOTH E and F
+Choose 1, 2 or 3: Probability for A -> B [0 to 1]: Probability for A -> C [0 to 1]: 
+LINK ETX VALUES
+A         B             2.000000
+A         C             2.000000
+
+First broadcast outcomes:
+Neither: 0.250000
+B only:  0.250000
+C only:  0.250000
+Both:    0.250000
+
+Source    Target        ETX
+A         B             2.000000
+A         C             2.000000
+A         B AND C       2.666667
+
+Final ETX from A to BOTH B and C = 2.666667

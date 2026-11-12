@@ -1,0 +1,66 @@
+1. A -> {B,C}: deliver to BOTH B and C
+2. A -> {B,C}, B/C -> {D,E}: deliver to BOTH D and E
+3. A -> {B,C,D}, B -> E, C -> {E,F}, D -> F: deliver to BOTH E and F
+Choose 1, 2 or 3: 
+CASE 3
+A -> {B,C,D}, B -> E, C -> {E,F}, D -> F
+Probability for A -> B [0 to 1]: Probability for A -> C [0 to 1]: Probability for A -> D [0 to 1]: Probability for B -> E [0 to 1]: Probability for C -> E [0 to 1]: Probability for C -> F [0 to 1]: Probability for D -> F [0 to 1]: 
+LINK ETX VALUES
+A -> B: 1.250000
+A -> C: 1.428571
+A -> D: 1.333333
+B -> E: 1.111111
+C -> E: 1.666667
+C -> F: 1.176471
+D -> F: 1.250000
+
+RELAY TABLES (relay already has the packet)
+Source    Target        ETX
+B         E             1.111111
+B         F             unreachable
+B         E AND F       unreachable
+C         E             1.666667
+C         F             1.176471
+C         E AND F       1.779307
+D         E             unreachable
+D         F             1.250000
+D         E AND F       unreachable
+
+FINAL SOURCE TABLE
+Source    Target        ETX
+A         E only        2.257683
+A         F only        2.275437
+A         E AND F       2.901741
+E-only and F-only are separate goals; do not add their ETXs.
+
+Forwarding table: deliver the same packet to BOTH E and F
+1 = already has packet, 0 = does not have packet. A always has it.
+Some configurations may not occur for particular probabilities.
+B C D E F     Next sender     Remaining ETX
+0 0 0 0 0     A               2.901741
+0 0 1 0 0     A               2.871971
+0 0 1 0 1     A               2.257683
+0 1 0 0 0     C               1.779307
+0 1 0 0 1     C               1.666667
+0 1 0 1 0     C               1.176471
+0 1 0 1 1     DONE            0.000000
+0 1 1 0 0     C               1.779307
+0 1 1 0 1     C               1.666667
+0 1 1 1 0     C               1.176471
+0 1 1 1 1     DONE            0.000000
+1 0 0 0 0     A               2.849841
+1 0 0 1 0     A               2.275437
+1 0 1 0 0     D               2.361111
+1 0 1 0 1     B               1.111111
+1 0 1 1 0     D               1.250000
+1 0 1 1 1     DONE            0.000000
+1 1 0 0 0     C               1.578362
+1 1 0 0 1     B               1.111111
+1 1 0 1 0     C               1.176471
+1 1 0 1 1     DONE            0.000000
+1 1 1 0 0     C               1.578362
+1 1 1 0 1     B               1.111111
+1 1 1 1 0     C               1.176471
+1 1 1 1 1     DONE            0.000000
+
+Final ETX from A to BOTH E and F = 2.901741
