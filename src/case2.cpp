@@ -1,9 +1,29 @@
 #include <iostream>
 #include <iomanip>
+#include <cstring>
 #include "etx.h"
 #include "case2.h"
 #include "input.h"
 using namespace std;
+
+// The outgoing links of one sender. Receiver numbers: 0=B, 1=C, 2=D, 3=E.
+// Returns how many receivers the sender has (always two in case 2).
+int case2SenderLinks(int sender, double p[], int receiver[3],
+                     double probability[3]) {
+    receiver[2] = 0;
+    probability[2] = 0;
+    if (sender == 0) {
+        receiver[0] = 0; probability[0] = p[0]; // A -> B
+        receiver[1] = 1; probability[1] = p[1]; // A -> C
+    } else if (sender == 1) {
+        receiver[0] = 2; probability[0] = p[2]; // B -> D
+        receiver[1] = 3; probability[1] = p[3]; // B -> E
+    } else {
+        receiver[0] = 2; probability[0] = p[4]; // C -> D
+        receiver[1] = 3; probability[1] = p[5]; // C -> E
+    }
+    return 2;
+}
 
 // b,c,d,e are each 0 or 1: does that node already hold the packet?
 // sender: 0 means A, 1 means B, 2 means C.
@@ -16,19 +36,11 @@ double senderCost(double remaining[2][2][2][2], int b, int c, int d, int e,
         return INF;
     }
 
-    double firstProbability;
-    double secondProbability;
-
-    if (sender == 0) {
-        firstProbability = p[0];  // A -> B
-        secondProbability = p[1]; // A -> C
-    } else if (sender == 1) {
-        firstProbability = p[2];  // B -> D
-        secondProbability = p[3]; // B -> E
-    } else {
-        firstProbability = p[4];  // C -> D
-        secondProbability = p[5]; // C -> E
-    }
+    int receiver[3];
+    double probability[3];
+    case2SenderLinks(sender, p, receiver, probability);
+    double firstProbability = probability[0];
+    double secondProbability = probability[1];
 
     double progressProbability = 0;
     double futureCost = 0;
@@ -91,7 +103,8 @@ double senderCost(double remaining[2][2][2][2], int b, int c, int d, int e,
     return (1 + futureCost) / progressProbability;
 }
 
-double calculateRouting(double p[], bool needD, bool needE, bool showTable) {
+double calculateRouting(double p[], bool needD, bool needE, bool showTable,
+                        double remainingOut[], int nextSenderOut[]) {
     // No bit tricks: the four array positions directly represent B,C,D,E.
     double remaining[2][2][2][2];
     int nextSender[2][2][2][2];
@@ -156,6 +169,11 @@ double calculateRouting(double p[], bool needD, bool needE, bool showTable) {
             }
         }
     }
+
+    // Optional copy of the tables for the simulator, in B,C,D,E order:
+    // index = 8*b + 4*c + 2*d + e.
+    if (remainingOut != 0) memcpy(remainingOut, remaining, sizeof(remaining));
+    if (nextSenderOut != 0) memcpy(nextSenderOut, nextSender, sizeof(nextSender));
 
     // Initially only A holds the packet.
     return remaining[0][0][0][0];

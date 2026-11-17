@@ -1,11 +1,40 @@
 #include <iostream>
 #include <iomanip>
+#include <cstring>
 #include "case3.h"
 #include "input.h"
 #include "etx.h"
 using namespace std;
 
 // p[0..6] = AB, AC, AD, BE, CE, CF, DF.
+// The outgoing links of one sender. Receiver numbers: 0=B, 1=C, 2=D, 3=E, 4=F.
+// Unused receiver slots get probability 0.
+// Returns how many receivers the sender really has.
+int case3SenderLinks(int sender, double p[], int receiver[3],
+                     double probability[3]) {
+    for (int i = 0; i < 3; i++) {
+        receiver[i] = 0;
+        probability[i] = 0;
+    }
+
+    if (sender == 0) {
+        receiver[0] = 0; probability[0] = p[0]; // A -> B
+        receiver[1] = 1; probability[1] = p[1]; // A -> C
+        receiver[2] = 2; probability[2] = p[2]; // A -> D
+        return 3;
+    } else if (sender == 1) {
+        receiver[0] = 3; probability[0] = p[3]; // B -> E only
+        return 1;
+    } else if (sender == 2) {
+        receiver[0] = 3; probability[0] = p[4]; // C -> E
+        receiver[1] = 4; probability[1] = p[5]; // C -> F
+        return 2;
+    } else {
+        receiver[0] = 4; probability[0] = p[6]; // D -> F only
+        return 1;
+    }
+}
+
 // The five flags b,c,d,e,f record who has the packet. A always has it.
 // sender: 0=A, 1=B, 2=C, 3=D.
 double senderCostCase3(double remaining[2][2][2][2][2],
@@ -15,22 +44,9 @@ double senderCostCase3(double remaining[2][2][2][2][2],
     if (sender == 2 && c == 0) return INF;
     if (sender == 3 && d == 0) return INF;
 
-    // Receiver numbers: 0=B, 1=C, 2=D, 3=E, 4=F.
-    int receiver[3] = {0, 0, 0};
-    double probability[3] = {0, 0, 0};
-
-    if (sender == 0) {
-        receiver[0] = 0; probability[0] = p[0]; // A -> B
-        receiver[1] = 1; probability[1] = p[1]; // A -> C
-        receiver[2] = 2; probability[2] = p[2]; // A -> D
-    } else if (sender == 1) {
-        receiver[0] = 3; probability[0] = p[3]; // B -> E only
-    } else if (sender == 2) {
-        receiver[0] = 3; probability[0] = p[4]; // C -> E
-        receiver[1] = 4; probability[1] = p[5]; // C -> F
-    } else {
-        receiver[0] = 4; probability[0] = p[6]; // D -> F only
-    }
+    int receiver[3];
+    double probability[3];
+    case3SenderLinks(sender, p, receiver, probability);
 
     double progressProbability = 0;
     double futureCost = 0;
@@ -80,7 +96,8 @@ double senderCostCase3(double remaining[2][2][2][2][2],
     return (1 + futureCost) / progressProbability;
 }
 
-double calculateCase3(double p[], bool needE, bool needF, bool showTable) {
+double calculateCase3(double p[], bool needE, bool needF, bool showTable,
+                      double remainingOut[], int nextSenderOut[]) {
     double remaining[2][2][2][2][2];
     int nextSender[2][2][2][2][2];
 
@@ -147,6 +164,11 @@ double calculateCase3(double p[], bool needE, bool needF, bool showTable) {
             }
         }
     }
+    // Optional copy of the tables for the simulator, in B,C,D,E,F order:
+    // index = 16*b + 8*c + 4*d + 2*e + f.
+    if (remainingOut != 0) memcpy(remainingOut, remaining, sizeof(remaining));
+    if (nextSenderOut != 0) memcpy(nextSenderOut, nextSender, sizeof(nextSender));
+
     return remaining[0][0][0][0][0];
 }
 
