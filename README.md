@@ -20,8 +20,13 @@ Case 3 has seven directed links. There is no B->F or D->E link.
 - src/case4.cpp, include/case4.h: case 4 input, forwarding calculation and output.
 - src/input.cpp, include/input.h: shared probability input.
 - src/etx.cpp, include/etx.h: shared link ETX, two-receiver ETX and table formatting.
-- examples/: input and captured output for each case.
-- build.bat: compiles every case into build/etx_routing.exe.
+- src/simulation.cpp: packet-level simulation of all four networks (see "Simulation" below).
+- src/ran2.cpp, include/ran2.h: random number generator copied unchanged from ncsimulation8july.cpp.
+- plot_results.py: draws the running-average plot from the simulation's CSV output.
+- examples/: input and captured output for each case. The simulation reads its link probabilities from here.
+- results/: output of `simulation --packets 10000 --seed 42`.
+- build.bat: compiles every case into build/etx_routing.exe and the simulation into build/simulation.exe.
+- build.sh: the same for macOS/Linux (build/etx_routing and build/simulation).
 
 The former routing.cpp/routing.h code is now inside case2.cpp.
 No CMake or test framework is required.
@@ -121,3 +126,141 @@ Exact ties prefer A, then B, then C, then D where applicable.
 - All nine probabilities equal to 1: ETX = 3. A broadcasts once, then B and either C or D broadcast.
 - If AB=0 or BE=0, E is unreachable and the joint ETX is unreachable, even if F and G remain reachable.
 - A broadcast has eight reception outcomes. Each relay broadcast has four. The same retry equation is used for each possible sender.
+
+## Simulation
+
+`src/simulation.cpp` sends packets through all four networks, one transmission at a time.
+It counts how many transmissions each packet needs and compares the average with the theoretical ETX that the code above calculates.
+
+### Build and run
+
+Windows (PowerShell):
+
+```powershell
+.\build.bat
+.\build\simulation.exe --packets 10000 --seed 42
+```
+
+macOS / Linux:
+
+```sh
+./build.sh
+./build/simulation --packets 10000 --seed 42
+```
+
+Options:
+
+| Option | Meaning | Default |
+|---|---|---|
+| `--packets N` | packets simulated per network | 10000 |
+| `--seed S` | seed for the random number generator, 1 to 2147483646 | 42 |
+| `--verbose` | log the first packets of each network step by step | off |
+| `--verbose-packets N` | how many packets `--verbose` logs | 10 |
+| `--examples DIR` | folder with case1.txt ... case4.txt (link probabilities) | examples |
+| `--out DIR` | folder for the CSV files | results |
+
+The same seed and packet count always give the same output.
+
+To draw the plot (needs Python 3 with matplotlib):
+
+```sh
+python3 -m pip install matplotlib
+python3 plot_results.py            # reads and writes the results/ folder
+```
+
+### How it works
+
+1. **Cases.** The case code supplies the outgoing links of every sender through
+   `case2SenderLinks`, `case3SenderLinks` and `case4SenderLinks`. The ETX calculation
+   uses the same functions. A sender with k receivers has 2^k cases, because each
+   receiver either gets the packet or not. A case's probability is the product of
+   p or (1 - p) for each link. The program checks that each sender's cases add up
+   to 1 and stops with an error if they do not.
+2. **Number line.** The cases are laid end to end on [0, 1). Each one gets an
+   interval as long as its probability:
+
+   ```text
+   A -> {B,C} with AB = 0.8, AC = 0.7
+   0        0.06           0.20                0.44                          1
+   |--none--|----C only----|------B only-------|-------------both------------|
+     case 0      case 1           case 2                  case 3
+   ```
+
+   A uniform random number r lands in an interval with probability equal to its
+   length, so picking "the interval that contains r" picks each case with exactly
+   its probability. The program prints this table for every sender (case,
+   probability, interval start, interval end).
+3. **Random numbers.** r comes from `randomgeneration()`, copied unchanged from
+   ncsimulation8july.cpp. It is ran2 from *Numerical Recipes* and returns a float
+   in (0, 1), so no normalisation is needed. The seed is handled the same way as
+   in that file: it passes `seed`, then `seed + T`, `seed + 2T`, and so on, with
+   T = time(NULL). The simulation uses `--seed` as both the start and T, so a run
+   can be repeated. The running sum is kept in 32 bits, as it was when the
+   original ran on Windows. With a 64-bit `long` (macOS/Linux) the sum would grow
+   past 2147483563, which `randomgeneration()` cannot handle: its shuffle-table
+   index goes negative and the program crashes.
+4. **Forwarding.** The ETX code computes `remaining` and `nextSender` for every
+   "who holds the packet" state. The simulation gets copies of both through
+   optional arguments added to `calculateRouting`, `calculateCase3` and
+   `calculateCase4`. Case 1 has no relays: A is the only sender, and its
+   remaining ETX comes from `bothETX`/`linkETX`. On each step the simulation:
+   - looks up the sender for the current state;
+   - draws r and finds the case;
+   - adds that case's receivers to the holders;
+   - repeats until every destination of the network has the packet.
+
+   If nobody new receives, the state does not change, so the same sender
+   transmits again.
+
+**Difference from a "best receiver forwards, the others drop" model.** In this
+project, every node that receives the packet keeps its copy (see Assumptions).
+The next sender is the holder whose broadcast gives the lowest remaining ETX
+for the current set of holders, as in the notes' V_B, V_C and V_BC. A relay that
+is not chosen now can still be chosen later; for example, in network 4, B
+reaches E and then D finishes G. The theoretical ETX assumes exactly this
+behaviour, so the simulation follows it too. If lower-priority receivers dropped
+the packet, the simulated average would not converge to these ETX values.
+
+Networks 1 to 3 have two destinations; network 4 has three (E, F, G). Each
+network is simulated until all of its own destinations have the packet.
+
+### Output
+
+For every network the program prints:
+
+- the case interval table of every sender;
+- with `--verbose`, a step-by-step log of the first packets: holders, sender,
+  random number, the interval it fell in and the case chosen, who received, and
+  the next forwarder;
+- the theoretical ETX next to the simulated average transmissions per packet,
+  with a 95% confidence interval, the absolute and % difference, and how many
+  standard errors apart they are (more than 3 prints a warning);
+- the average number of transmissions per packet made by each sender (A, B, C, D).
+  These add up to the total;
+- for each destination, the average number of transmissions until it first has
+  the packet.
+
+At the end comes a summary table for all four networks. These files are written to `results/`:
+
+| File | Contents |
+|---|---|
+| summary.csv | network, destinations, packets, seed, theoretical ETX, simulated mean, standard error, abs and % difference |
+| per_node.csv | average transmissions per packet by each sender |
+| per_destination.csv | average transmissions until each destination has the packet |
+| case_intervals.csv | every sender's cases, probabilities and intervals |
+| running_average.csv | running average after each packet (used for the plot; every packet up to 1000, then about 10000 points) |
+| running_average.png | made by plot_results.py: running average per network with the theoretical ETX as a dashed line |
+
+### Results (10000 packets, seed 42, probabilities from examples/)
+
+| Network | Destinations | Theoretical ETX | Simulated average | Abs diff | % diff |
+|---|---|---|---|---|---|
+| 1 | B, C | 2.666667 | 2.672000 | 0.005333 | 0.200% |
+| 2 | D, E | 3.031289 | 3.037600 | 0.006311 | 0.208% |
+| 3 | E, F | 2.901741 | 2.889000 | 0.012741 | 0.439% |
+| 4 | E, F, G | 3.661859 | 3.675600 | 0.013741 | 0.375% |
+
+All four are within 1.6 standard errors of the ETX. The leftover difference is
+sampling noise, which shrinks like 1/sqrt(packets). With 1,000,000 packets, every
+network was within 0.07% of its ETX for each of the seeds 7, 42, 99991, 123457
+and 2147483646.
