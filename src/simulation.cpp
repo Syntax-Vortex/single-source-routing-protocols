@@ -283,7 +283,7 @@ bool buildNetwork(int id, const string& examplesFolder, Network& net) {
     int senderCount = 0;
 
     if (id == 1) {
-        net.description = "A -> {B,C}: deliver to BOTH B and C";
+        net.description = "A -> {B,C}";
         const char* l[] = {"A -> B", "A -> C"};
         net.linkNames.assign(l, l + 2);
         const char* f[] = {"B", "C"};
@@ -293,7 +293,7 @@ bool buildNetwork(int id, const string& examplesFolder, Network& net) {
         senderCount = 1;
         links = case1SenderLinks;
     } else if (id == 2) {
-        net.description = "A -> {B,C}, B/C -> {D,E}: deliver to BOTH D and E";
+        net.description = "A -> {B,C};  B -> {D,E};  C -> {D,E}";
         const char* l[] = {"A -> B", "A -> C", "B -> D", "B -> E", "C -> D", "C -> E"};
         net.linkNames.assign(l, l + 6);
         const char* f[] = {"B", "C", "D", "E"};
@@ -303,7 +303,7 @@ bool buildNetwork(int id, const string& examplesFolder, Network& net) {
         senderCount = 3;
         links = case2SenderLinks;
     } else if (id == 3) {
-        net.description = "A -> {B,C,D}, B -> E, C -> {E,F}, D -> F: deliver to BOTH E and F";
+        net.description = "A -> {B,C,D};  B -> E;  C -> {E,F};  D -> F";
         const char* l[] = {"A -> B", "A -> C", "A -> D", "B -> E", "C -> E", "C -> F", "D -> F"};
         net.linkNames.assign(l, l + 7);
         const char* f[] = {"B", "C", "D", "E", "F"};
@@ -313,7 +313,7 @@ bool buildNetwork(int id, const string& examplesFolder, Network& net) {
         senderCount = 4;
         links = case3SenderLinks;
     } else {
-        net.description = "A -> {B,C,D}, B -> {E,F}, C/D -> {F,G}: deliver to ALL E, F and G";
+        net.description = "A -> {B,C,D};  B -> {E,F};  C -> {F,G};  D -> {F,G}";
         const char* l[] = {"A -> B", "A -> C", "A -> D", "B -> E", "B -> F",
                            "C -> F", "C -> G", "D -> F", "D -> G"};
         net.linkNames.assign(l, l + 9);
@@ -365,6 +365,86 @@ bool buildNetwork(int id, const string& examplesFolder, Network& net) {
     return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// Report formatting (plain ASCII so it looks the same in every terminal)
+// ---------------------------------------------------------------------------
+
+const int PAGE_WIDTH = 78;
+
+string num(double value, int decimals) {
+    ostringstream text;
+    text << fixed << setprecision(decimals) << value;
+    return text.str();
+}
+
+string signedNum(double value, int decimals) {
+    return (value >= 0 ? "+" : "") + num(value, decimals);
+}
+
+string pad(const string& text, size_t width) {
+    if (text.size() >= width) return text + " ";
+    return text + string(width - text.size(), ' ');
+}
+
+string padLeft(const string& text, size_t width) {
+    if (text.size() >= width) return text;
+    return string(width - text.size(), ' ') + text;
+}
+
+void line(char c) {
+    cout << string(PAGE_WIDTH, c) << "\n";
+}
+
+void banner(const string& title) {
+    cout << "\n";
+    line('=');
+    cout << "  " << title << "\n";
+    line('=');
+}
+
+void section(const string& title) {
+    cout << "\n  " << title << "\n  " << string(title.size(), '-') << "\n";
+}
+
+// "B, C" or "E, F and G"
+string nameList(const vector<string>& names) {
+    string text;
+    for (size_t i = 0; i < names.size(); i++) {
+        if (i > 0) text += (i + 1 == names.size()) ? " and " : ", ";
+        text += names[i];
+    }
+    return text;
+}
+
+vector<string> destinationNames(const Network& net) {
+    vector<string> names;
+    for (size_t d = 0; d < net.destinations.size(); d++) {
+        names.push_back(net.flagNames[net.destinations[d]]);
+    }
+    return names;
+}
+
+vector<string> receiverNames(const Network& net, const Sender& sender) {
+    vector<string> names;
+    for (int i = 0; i < sender.count; i++) names.push_back(net.flagNames[sender.receiver[i]]);
+    return names;
+}
+
+// Holders as "A B D" (A always holds the packet).
+string holdersShort(const Network& net, int state) {
+    string text = "A";
+    for (size_t i = 0; i < net.flagNames.size(); i++) {
+        if (hasPacket(net, state, (int)i)) text += " " + net.flagNames[i];
+    }
+    return text;
+}
+
+string intervalText(const Sender& sender, int n, int decimals) {
+    return "[" + num(sender.intervalStart[n], decimals) + ", "
+           + num(sender.intervalEnd[n], decimals) + ")";
+}
+
 // ---------------------------------------------------------------------------
 // Simulation
 // ---------------------------------------------------------------------------
@@ -379,31 +459,81 @@ struct Result {
     vector<double> runningAverage;
 };
 
+void printNetworkHeader(const Network& net, const string& examplesFolder) {
+    ostringstream title;
+    title << "NETWORK " << net.id << " of 4";
+    banner(title.str());
+    cout << "  Links       : " << net.description << "\n";
+    cout << "  Source      : A (always has the packet)\n";
+    cout << "  Destinations: " << nameList(destinationNames(net))
+         << "  (the packet must reach all of them)\n";
+
+    section("Link success probabilities  (from " + examplesFolder + "/case"
+            + num(net.id, 0) + ".txt)");
+    cout << "    Link      p (success)   link ETX = 1/p\n";
+    for (size_t i = 0; i < net.p.size(); i++) {
+        cout << "    " << pad(net.linkNames[i], 10) << pad(num(net.p[i], 2), 14)
+             << (net.p[i] > 0 ? num(1 / net.p[i], 4) : string("unreachable")) << "\n";
+    }
+}
+
+// STEP 1: every sender's cases, their probabilities and their intervals.
 void printIntervalTables(const Network& net, ofstream& csv) {
+    section("STEP 1  Reception cases of every sender and their intervals on [0, 1)");
+    cout << "    1 = that receiver gets the broadcast, 0 = it does not.\n";
+    cout << "    Each case owns an interval as long as its probability, so a random\n";
+    cout << "    number r in [0, 1) falls into a case's interval with exactly that\n";
+    cout << "    case's probability.\n";
+
     for (size_t s = 0; s < net.senders.size(); s++) {
         const Sender& sender = net.senders[s];
-        cout << "\nSender " << sender.name << " broadcasts to ";
-        for (int i = 0; i < sender.count; i++) {
-            if (i > 0) cout << ",";
-            cout << net.flagNames[sender.receiver[i]];
-        }
-        cout << " (" << sender.caseProbability.size() << " cases)\n";
-        cout << "case  received        probability  interval start  interval end\n";
+        vector<string> receivers = receiverNames(net, sender);
+        cout << "\n    Sender " << sender.name << " broadcasts to "
+             << nameList(receivers) << ": " << receivers.size()
+             << (receivers.size() == 1 ? " receiver, " : " receivers, ")
+             << sender.caseProbability.size() << " cases\n\n";
+
+        string bitHeader;
+        for (size_t i = 0; i < receivers.size(); i++) bitHeader += pad(receivers[i], 3);
+        cout << "      Case  " << pad(bitHeader, 10) << "Probability   Interval on [0, 1)\n";
+        cout << "      ----  " << pad(string(bitHeader.size() - 1, '-'), 10)
+             << "-----------   ----------------------\n";
+
         double total = 0;
         for (size_t n = 0; n < sender.caseProbability.size(); n++) {
-            string bits = caseBits(net, sender, (int)n);
-            cout << setw(4) << n << "  " << setw(14) << left << bits << right
-                 << setw(13) << sender.caseProbability[n]
-                 << setw(16) << sender.intervalStart[n]
-                 << setw(14) << sender.intervalEnd[n] << "\n";
-            csv << net.id << "," << sender.name << "," << n << "," << bits << ","
+            string bits;
+            for (int i = 0; i < sender.count; i++) {
+                bool received = (((int)n >> (sender.count - 1 - i)) & 1) == 1;
+                bits += pad(received ? "1" : "0", 3);
+            }
+            cout << "      " << padLeft(num((double)n, 0), 4) << "  " << pad(bits, 10)
+                 << padLeft(num(sender.caseProbability[n], 6), 11) << "   "
+                 << intervalText(sender, (int)n, 6) << "\n";
+
+            csv << net.id << "," << sender.name << "," << n << ","
+                << caseBits(net, sender, (int)n) << ","
                 << setprecision(10) << sender.caseProbability[n] << ","
                 << sender.intervalStart[n] << "," << sender.intervalEnd[n]
                 << setprecision(6) << "\n";
             total = total + sender.caseProbability[n];
         }
-        cout << "      sum of probabilities = " << total << "  (checked: equals 1)\n";
+        cout << "      " << string(16, ' ') << "-----------\n";
+        cout << "      " << string(16, ' ') << padLeft(num(total, 6), 11)
+             << "   sum is 1: check passed\n";
     }
+}
+
+void printVerboseHeader(int verbosePackets) {
+    section("STEP 2  The first " + num(verbosePackets, 0)
+            + " packets, transmission by transmission");
+    cout << "    Draw     = how many random numbers have been generated so far\n";
+    cout << "    Passed   = value given to randomgeneration() for this draw\n";
+    cout << "    r        = random number it returned\n";
+    cout << "    Interval = the sender's interval (STEP 1) that contains r -> Case\n";
+    cout << "    Holders  = nodes with a copy. Every receiver keeps its copy; the next\n";
+    cout << "               sender is the holder with the lowest remaining ETX\n";
+    cout << "               (forwarding table of the ETX analysis).\n";
+    cout << "    no change = nobody new received, so the same sender transmits again\n";
 }
 
 // randomLog: if not null, every generated random number is written to it.
@@ -423,9 +553,17 @@ bool simulateNetwork(const Network& net, long packets, int verbosePackets,
     result.runningPacket.clear();
     result.runningAverage.clear();
 
+    if (verbosePackets > 0) printVerboseHeader((int)(verbosePackets < packets ? verbosePackets : packets));
+
     for (long packet = 1; packet <= packets; packet++) {
         bool verbose = packet <= verbosePackets;
-        if (verbose) cout << "\nPacket " << packet << "\n";
+        if (verbose) {
+            cout << "\n    Packet " << packet << "\n";
+            cout << "      Tx  Sender  Draw    Passed    r           Interval          Case  "
+                    "Received  Holders after\n";
+            cout << "      --  ------  ------  --------  ----------  ----------------  ----  "
+                    "--------  -------------\n";
+        }
 
         int state = 0;          // only A has the packet
         long transmissions = 0;
@@ -478,33 +616,26 @@ bool simulateNetwork(const Network& net, long packets, int verbosePackets,
             }
 
             if (verbose) {
-                cout << "  tx " << transmissions << ": holders " << holdersText(net, state)
-                     << ", sender " << sender.name << " (remaining ETX "
-                     << net.remaining[state] << ")\n";
-                cout << "        random number #" << g_drawCount
-                     << ": randomgeneration(" << seedUsed << ") = "
-                     << setprecision(8) << r << setprecision(6) << "\n";
-                cout << "        r = " << setprecision(8) << r << setprecision(6)
-                     << " lies in [" << sender.intervalStart[n] << ", "
-                     << sender.intervalEnd[n] << ") -> case " << n << " ("
-                     << caseBits(net, sender, n) << ")\n";
-                cout << "        received by: " << receiversText(net, sender, n);
-                if (newState == state) {
-                    cout << " (no new holder, " << sender.name << " must transmit again)\n";
-                } else {
-                    cout << " -> holders " << holdersText(net, newState) << "\n";
+                string received = receiversText(net, sender, n);
+                for (size_t k = 0; k < received.size(); k++) {
+                    if (received[k] == ',') received[k] = ' ';
                 }
-                if (allDestinationsServed(net, newState)) {
-                    cout << "        all destinations have the packet: done after "
-                         << transmissions << " transmissions\n";
-                } else {
-                    int next = net.nextSender[newState];
-                    cout << "        next forwarder: "
-                         << (next < 0 ? string("none") : net.senders[next].name)
-                         << " (lowest remaining ETX " << net.remaining[newState] << ")\n";
-                }
+                cout << "      " << padLeft(num((double)transmissions, 0), 2) << "  "
+                     << pad(sender.name, 8) << pad(num((double)g_drawCount, 0), 8)
+                     << pad(num((double)seedUsed, 0), 10) << pad(num(r, 8), 12)
+                     << pad(intervalText(sender, n, 4), 18)
+                     << padLeft(num((double)n, 0), 4) << "  "
+                     << pad(received, 10)
+                     << (newState == state ? string("no change")
+                                           : holdersShort(net, newState))
+                     << "\n";
             }
             state = newState;
+        }
+
+        if (verbose) {
+            cout << "      All destinations have the packet after " << transmissions
+                 << (transmissions == 1 ? " transmission.\n" : " transmissions.\n");
         }
 
         sum += transmissions;
@@ -534,6 +665,52 @@ bool simulateNetwork(const Network& net, long packets, int verbosePackets,
     return true;
 }
 
+// How far the simulated mean is from the ETX, in standard errors.
+double standardErrorsAway(const Network& net, const Result& res) {
+    if (res.standardError <= 0) return res.mean == net.theoreticalETX ? 0 : 1e9;
+    return fabs(res.mean - net.theoreticalETX) / res.standardError;
+}
+
+bool agrees(const Network& net, const Result& res) {
+    return standardErrorsAway(net, res) <= 3;
+}
+
+void printNetworkResult(const Network& net, const Result& res, int stepNumber) {
+    section("STEP " + num(stepNumber, 0) + "  Result over " + num((double)res.packets, 0)
+            + " packets");
+    double difference = res.mean - net.theoreticalETX;
+    double z = standardErrorsAway(net, res);
+    double half = 1.96 * res.standardError;
+
+    cout << "    Theoretical ETX (analysis)        " << num(net.theoreticalETX, 6) << "\n";
+    cout << "    Simulated average per packet      " << num(res.mean, 6) << "\n";
+    cout << "    95% confidence interval           " << num(res.mean - half, 6)
+         << " to " << num(res.mean + half, 6) << "\n";
+    cout << "    Difference (simulated - theory)   " << signedNum(difference, 6)
+         << "  (" << num(100 * fabs(difference) / net.theoreticalETX, 2) << " %)\n";
+    cout << "    Verdict                           ";
+    if (z <= 1.96) {
+        cout << "AGREES (ETX is inside the 95% interval)\n";
+    } else if (z <= 3) {
+        cout << "AGREES (within " << num(z, 1) << " standard errors)\n";
+    } else {
+        cout << "DOES NOT AGREE (" << num(z, 1) << " standard errors apart)\n";
+    }
+
+    cout << "\n    Average transmissions per packet by each sender (they add up to the total):\n      ";
+    for (size_t s = 0; s < net.senders.size(); s++) {
+        cout << net.senders[s].name << " = " << num(res.perSender[s], 4) << "    ";
+    }
+    cout << "Total = " << num(res.mean, 4) << "\n";
+
+    cout << "\n    On average, each destination first had the packet after transmission no.:\n      ";
+    vector<string> names = destinationNames(net);
+    for (size_t d = 0; d < names.size(); d++) {
+        cout << (d ? "     " : "") << names[d] << " = " << num(res.perDestination[d], 4);
+    }
+    cout << "\n";
+}
+
 // ---------------------------------------------------------------------------
 // Command line and output
 // ---------------------------------------------------------------------------
@@ -543,12 +720,12 @@ void printUsage() {
          << "                  [--log-random] [--examples DIR] [--out DIR]\n\n"
          << "  --packets N          packets per network (default 10000)\n"
          << "  --seed S             positive seed for randomgeneration() (default 42)\n"
-         << "  --verbose            log the first packets of each network step by step\n"
-         << "  --verbose-packets N  how many packets --verbose logs (default 10)\n"
+         << "  --verbose            show the first packets of each network step by step\n"
+         << "  --verbose-packets N  how many packets --verbose shows (default 10)\n"
          << "  --log-random         write every generated random number to\n"
          << "                       OUT/random_numbers.csv\n"
          << "  --examples DIR       folder with case1.txt..case4.txt (default examples)\n"
-         << "  --out DIR            folder for CSV output (default results)\n";
+         << "  --out DIR            folder for the report and CSV files (default results)\n";
 }
 
 bool parseLong(const char* text, long& value) {
@@ -562,6 +739,126 @@ void makeFolder(const string& folder) {
     _mkdir(folder.c_str());
 #else
     mkdir(folder.c_str(), 0755);
+#endif
+}
+
+// Sends everything written to cout to the screen and to report.txt.
+class TeeBuffer : public streambuf {
+public:
+    TeeBuffer(streambuf* screen, streambuf* file) : screen_(screen), file_(file) {}
+
+protected:
+    virtual int overflow(int c) {
+        if (c == EOF) return 0;
+        int a = screen_->sputc((char)c);
+        int b = file_->sputc((char)c);
+        return (a == EOF || b == EOF) ? EOF : c;
+    }
+    virtual int sync() {
+        int a = screen_->pubsync();
+        int b = file_->pubsync();
+        return (a == 0 && b == 0) ? 0 : -1;
+    }
+
+private:
+    streambuf* screen_;
+    streambuf* file_;
+};
+
+// Puts cout's original buffer back when main returns, even on an error.
+struct RestoreCout {
+    streambuf* original;
+    explicit RestoreCout(streambuf* buffer) : original(buffer) {}
+    ~RestoreCout() {
+        cout.flush();
+        cout.rdbuf(original);
+    }
+};
+
+void printIntroduction(long packets, long seed, bool verbose, const string& examplesFolder) {
+    banner("OPPORTUNISTIC ROUTING: PACKET-LEVEL SIMULATION OF 4 NETWORKS");
+    cout << "  Purpose\n";
+    cout << "    Check by simulation that the theoretical ETX of each network equals the\n";
+    cout << "    average number of transmissions needed to deliver one packet from the\n";
+    cout << "    source A to all of its destinations.\n";
+    cout << "\n  Method (the same for every network)\n";
+    cout << "    1. A broadcast to k receivers has 2^k reception cases. Their probabilities\n";
+    cout << "       come from the link probabilities and must sum to 1.\n";
+    cout << "    2. The cases are laid end to end on the number line [0, 1); each case gets\n";
+    cout << "       an interval as long as its probability.\n";
+    cout << "    3. For every transmission a random number r is drawn with\n";
+    cout << "       randomgeneration() (ran2, Numerical Recipes). The case whose interval\n";
+    cout << "       contains r is what happens in that transmission.\n";
+    cout << "    4. Every node that receives the packet keeps a copy. The next sender is\n";
+    cout << "       taken from the forwarding table of the ETX analysis: the holder with\n";
+    cout << "       the lowest remaining ETX. If nobody new receives, it sends again.\n";
+    cout << "    5. This repeats until every destination has the packet. The number of\n";
+    cout << "       transmissions is counted, averaged over all packets and compared\n";
+    cout << "       with the theoretical ETX.\n";
+    cout << "\n  Settings\n";
+    cout << "    Packets per network : " << packets << "\n";
+    cout << "    Random seed         : " << seed << "  (draw k passes k x " << seed
+         << " to randomgeneration())\n";
+    cout << "    Link probabilities  : " << examplesFolder << "/case1.txt ... case4.txt\n";
+    cout << "    Step-by-step log    : "
+         << (verbose ? "on (STEP 2 of each network)" : "off (add --verbose to see it)") << "\n";
+}
+
+void printSummary(const vector<Network>& networks, const vector<Result>& results,
+                  long packets, long seed, const string& outFolder, bool logRandom) {
+    banner("SUMMARY: SIMULATED AVERAGE vs THEORETICAL ETX");
+    cout << "  " << packets << " packets per network, seed " << seed << ".\n";
+    cout << "  Random numbers generated: " << g_drawCount
+         << " (one per transmission).\n\n";
+    cout << "  Network  Destinations  Theoretical ETX  Simulated avg  Difference          Verdict\n";
+    cout << "  -------  ------------  ---------------  -------------  ------------------  -------\n";
+    int agreeing = 0;
+    for (size_t i = 0; i < networks.size(); i++) {
+        const Network& net = networks[i];
+        const Result& res = results[i];
+        double difference = res.mean - net.theoreticalETX;
+        bool ok = agrees(net, res);
+        if (ok) agreeing++;
+        vector<string> names = destinationNames(net);
+        string destinations;
+        for (size_t d = 0; d < names.size(); d++) destinations += (d ? ", " : "") + names[d];
+        cout << "  " << padLeft(num(net.id, 0), 4) << "     " << pad(destinations, 14)
+             << padLeft(num(net.theoreticalETX, 6), 15) << padLeft(num(res.mean, 6), 15)
+             << "  " << pad(signedNum(difference, 6) + " ("
+                            + num(100 * fabs(difference) / net.theoreticalETX, 2) + "%)", 20)
+             << (ok ? "agrees" : "DIFFERS") << "\n";
+    }
+
+    cout << "\n  Conclusion\n";
+    if (agreeing == (int)networks.size()) {
+        cout << "    In all " << networks.size() << " networks the simulated average number of transmissions\n";
+        cout << "    agrees with the theoretical ETX: every difference is within 3 standard\n";
+        cout << "    errors, which is normal sampling noise. The simulation therefore confirms\n";
+        cout << "    the ETX values computed by the analysis. The differences shrink as more\n";
+        cout << "    packets are simulated (see running_average.png).\n";
+    } else {
+        cout << "    " << (networks.size() - agreeing) << " of " << networks.size()
+             << " networks differ from the theoretical ETX by more than 3 standard\n";
+        cout << "    errors. See the verdicts above and investigate those networks.\n";
+    }
+
+    cout << "\n  Files in " << outFolder << "/\n";
+    cout << "    report.txt            this report\n";
+    cout << "    summary.csv           the table above\n";
+    cout << "    per_node.csv          average transmissions per packet by each sender\n";
+    cout << "    per_destination.csv   average transmission number when each destination\n";
+    cout << "                          first has the packet\n";
+    cout << "    case_intervals.csv    STEP 1 tables of all networks\n";
+    cout << "    running_average.csv   running average after each packet (for the plot)\n";
+    if (logRandom) {
+        cout << "    random_numbers.csv    every random number generated and the case it chose\n";
+    }
+#ifdef _WIN32
+    cout << "\n  Plot: .venv\\Scripts\\python plot_results.py --out " << outFolder
+         << "   (README: \"To draw the plot\")\n";
+#else
+    cout << "\n  Plot: .venv/bin/python plot_results.py --out " << outFolder
+         << "   (README: \"To draw the plot\")\n";
 #endif
 }
 
@@ -611,8 +908,6 @@ int main(int argc, char* argv[]) {
     }
     if (!verbose) verbosePackets = 0;
 
-    cout << fixed << setprecision(6);
-
     // Read the probabilities and build every network (with its probability
     // check) before opening any output file, so a bad input never wipes out
     // earlier results.
@@ -620,16 +915,22 @@ int main(int argc, char* argv[]) {
     vector<Result> results(4);
     for (int id = 1; id <= 4; id++) {
         if (!buildNetwork(id, examplesFolder, networks[id - 1])) return 1;
+        if (networks[id - 1].theoreticalETX == INF) {
+            cerr << "Error: network " << id << " cannot reach every destination.\n";
+            return 1;
+        }
     }
 
     makeFolder(outFolder);
+    ofstream reportFile((outFolder + "/report.txt").c_str());
     ofstream intervalsCsv((outFolder + "/case_intervals.csv").c_str());
     ofstream summaryCsv((outFolder + "/summary.csv").c_str());
     ofstream nodeCsv((outFolder + "/per_node.csv").c_str());
     ofstream destinationCsv((outFolder + "/per_destination.csv").c_str());
     ofstream runningCsv((outFolder + "/running_average.csv").c_str());
-    if (!intervalsCsv || !summaryCsv || !nodeCsv || !destinationCsv || !runningCsv) {
-        cerr << "Error: cannot write CSV files in " << outFolder << "\n";
+    if (!reportFile || !intervalsCsv || !summaryCsv || !nodeCsv || !destinationCsv
+        || !runningCsv) {
+        cerr << "Error: cannot write files in " << outFolder << "\n";
         return 1;
     }
     intervalsCsv << "network,sender,case,received,probability,interval_start,interval_end\n";
@@ -657,102 +958,44 @@ int main(int argc, char* argv[]) {
         randomCsv << fixed;
     }
 
-    cout << "Opportunistic routing simulation: " << packets << " packets per network, seed "
-         << seed << "\n";
+    // From here on, everything printed also goes to report.txt.
+    TeeBuffer tee(cout.rdbuf(), reportFile.rdbuf());
+    RestoreCout restore(cout.rdbuf(&tee));
+    cout << fixed << setprecision(6);
+
+    printIntroduction(packets, seed, verbose, examplesFolder);
     setSeed(seed);
 
     for (int id = 1; id <= 4; id++) {
         Network& net = networks[id - 1];
-
-        cout << "\n==================================================================\n";
-        cout << "NETWORK " << id << ": " << net.description << "\n";
-        cout << "Link probabilities (" << examplesFolder << "/case" << id << ".txt): ";
-        for (size_t i = 0; i < net.p.size(); i++) {
-            cout << (i ? ", " : "") << net.linkNames[i] << " = " << setprecision(2)
-                 << net.p[i] << setprecision(6);
-        }
-        cout << "\n\nCASE INTERVALS on [0, 1)";
-        printIntervalTables(net, intervalsCsv);
-
-        if (net.theoreticalETX == INF) {
-            cerr << "Error: network " << id << " cannot reach every destination.\n";
-            return 1;
-        }
-
         Result& res = results[id - 1];
+
+        printNetworkHeader(net, examplesFolder);
+        printIntervalTables(net, intervalsCsv);
         if (!simulateNetwork(net, packets, (int)verbosePackets, res,
                              logRandom ? &randomCsv : 0)) return 1;
+        printNetworkResult(net, res, verbosePackets > 0 ? 3 : 2);
 
         double difference = res.mean - net.theoreticalETX;
-        double percent = 100 * difference / net.theoreticalETX;
-        cout << "\nRESULT\n";
-        cout << "Theoretical ETX (existing code):  " << net.theoreticalETX << "\n";
-        cout << "Simulated average transmissions:  " << res.mean << "  (95% CI +/- "
-             << 1.96 * res.standardError << ")\n";
-        cout << "Difference:                       " << fabs(difference) << "  ("
-             << setprecision(3) << fabs(percent) << "%)" << setprecision(6) << "\n";
-        double z = res.standardError > 0 ? fabs(difference) / res.standardError : 0;
-        if (z <= 3) {
-            cout << "Within " << setprecision(2) << z << setprecision(6)
-                 << " standard errors of the ETX: consistent with convergence.\n";
-        } else {
-            cout << "WARNING: " << setprecision(2) << z << setprecision(6)
-                 << " standard errors away from the ETX. Investigate.\n";
-        }
-
-        cout << "Average transmissions per packet by each sender:";
-        for (size_t s = 0; s < net.senders.size(); s++) {
-            cout << "  " << net.senders[s].name << " = " << res.perSender[s];
-            nodeCsv << id << "," << net.senders[s].name << "," << res.perSender[s] << "\n";
-        }
-        cout << "\nAverage transmissions until each destination first has the packet:";
-        for (size_t d = 0; d < net.destinations.size(); d++) {
-            string name = net.flagNames[net.destinations[d]];
-            cout << "  " << name << " = " << res.perDestination[d];
-            destinationCsv << id << "," << name << "," << res.perDestination[d] << "\n";
-        }
-        cout << "\n";
-
+        vector<string> names = destinationNames(net);
         string destinationList;
-        for (size_t d = 0; d < net.destinations.size(); d++) {
-            destinationList += (d ? " " : "") + net.flagNames[net.destinations[d]];
-        }
+        for (size_t d = 0; d < names.size(); d++) destinationList += (d ? " " : "") + names[d];
         summaryCsv << id << "," << destinationList << "," << packets << "," << seed << ","
                    << net.theoreticalETX << "," << res.mean << "," << res.standardError << ","
-                   << fabs(difference) << "," << fabs(percent) << "\n";
+                   << fabs(difference) << "," << 100 * fabs(difference) / net.theoreticalETX
+                   << "\n";
+        for (size_t s = 0; s < net.senders.size(); s++) {
+            nodeCsv << id << "," << net.senders[s].name << "," << res.perSender[s] << "\n";
+        }
+        for (size_t d = 0; d < names.size(); d++) {
+            destinationCsv << id << "," << names[d] << "," << res.perDestination[d] << "\n";
+        }
         for (size_t k = 0; k < res.runningPacket.size(); k++) {
             runningCsv << id << "," << res.runningPacket[k] << "," << res.runningAverage[k]
                        << "," << net.theoreticalETX << "\n";
         }
     }
 
-    cout << "\n==================================================================\n";
-    cout << "SUMMARY (" << packets << " packets per network, seed " << seed << ")\n";
-    cout << "Network  Destinations  Theoretical ETX  Simulated avg  Abs diff  % diff\n";
-    for (int id = 1; id <= 4; id++) {
-        const Network& net = networks[id - 1];
-        const Result& res = results[id - 1];
-        string destinationList;
-        for (size_t d = 0; d < net.destinations.size(); d++) {
-            destinationList += (d ? "," : "") + net.flagNames[net.destinations[d]];
-        }
-        double difference = fabs(res.mean - net.theoreticalETX);
-        cout << setw(7) << id << "  " << setw(12) << left << destinationList << right
-             << setw(17) << net.theoreticalETX << setw(15) << res.mean
-             << setw(10) << difference << setw(7) << setprecision(3)
-             << 100 * difference / net.theoreticalETX << "%" << setprecision(6) << "\n";
-    }
-    cout << "\nRandom numbers generated in total: " << g_drawCount
-         << " (one per transmission)\n";
-    cout << "\nCSV files written to " << outFolder << "/: summary.csv, per_node.csv, "
-         << "per_destination.csv, case_intervals.csv, running_average.csv"
-         << (logRandom ? ", random_numbers.csv" : "") << "\n";
-#ifdef _WIN32
-    cout << "Plot: .venv\\Scripts\\python plot_results.py --out " << outFolder
-         << "   (README: \"To draw the plot\")\n";
-#else
-    cout << "Plot: .venv/bin/python plot_results.py --out " << outFolder
-         << "   (README: \"To draw the plot\")\n";
-#endif
+    printSummary(networks, results, packets, seed, outFolder, logRandom);
     return 0;
 }

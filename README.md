@@ -24,7 +24,7 @@ Case 3 has seven directed links. There is no B->F or D->E link.
 - src/ran2.cpp, include/ran2.h: random number generator copied unchanged from ncsimulation8july.cpp.
 - plot_results.py: draws the running-average plot from the simulation's CSV output.
 - examples/: input and captured output for each case. The simulation reads its link probabilities from here.
-- results/: output of `simulation --packets 10000 --seed 42`.
+- results/: output of `simulation --packets 10000 --seed 42 --verbose`. Start with results/report.txt.
 - build.bat: compiles every case into build/etx_routing.exe and the simulation into build/simulation.exe.
 - build.sh: the same for macOS/Linux (build/etx_routing and build/simulation).
 
@@ -158,7 +158,7 @@ Options:
 | `--verbose-packets N` | how many packets `--verbose` logs | 10 |
 | `--log-random` | write every generated random number to `random_numbers.csv` | off |
 | `--examples DIR` | folder with case1.txt ... case4.txt (link probabilities) | examples |
-| `--out DIR` | folder for the CSV files | results |
+| `--out DIR` | folder for report.txt and the CSV files | results |
 
 The same seed and packet count always give the same output.
 
@@ -254,26 +254,48 @@ network is simulated until all of its own destinations have the packet.
 
 ### Output
 
-For every network the program prints:
+The output is a report that someone new to the project can follow from top to
+bottom. Everything printed on screen is also saved to `results/report.txt`. The
+committed copy comes from `./build/simulation --packets 10000 --seed 42 --verbose`.
 
-- the case interval table of every sender;
-- with `--verbose`, a step-by-step log of the first packets: holders, sender,
-  which random number was generated (its draw number, the value passed to
-  `randomgeneration()` and the number returned), the interval it fell in and the
-  case chosen, who received, and the next forwarder;
-- the theoretical ETX next to the simulated average transmissions per packet,
-  with a 95% confidence interval, the absolute and % difference, and how many
-  standard errors apart they are (more than 3 prints a warning);
-- the average number of transmissions per packet made by each sender (A, B, C, D).
-  These add up to the total;
-- for each destination, the average number of transmissions until it first has
-  the packet.
+1. **Introduction:** the purpose of the simulation, the method in five steps,
+   and the settings used (packets, seed, input files).
+2. **One section per network** (NETWORK 1 of 4 ... NETWORK 4 of 4):
+   - links, source and destinations;
+   - link success probabilities and their link ETX (1/p);
+   - **STEP 1:** for every sender, a table of its reception cases (1 = received,
+     0 = not), each case's probability and its interval on [0, 1), with the
+     check that the probabilities sum to 1;
+   - **STEP 2** (only with `--verbose`): the first packets, one table row per
+     transmission. Each row shows the sender, which random number was generated
+     (draw number, value passed to `randomgeneration()`, number returned), the
+     interval it fell in and the case chosen, who received, and who holds the
+     packet afterwards;
+   - **STEP 2/3, result:**
+     - the theoretical ETX next to the simulated average and its 95% confidence
+       interval;
+     - the difference, and a verdict: AGREES if within 3 standard errors,
+       otherwise DOES NOT AGREE;
+     - the average transmissions by each sender, which add up to the total;
+     - for each destination, the average transmission number at which it first
+       has the packet.
+3. **Summary:**
+   - one table comparing all four networks;
+   - the total number of random numbers generated;
+   - a conclusion;
+   - the list of output files.
 
-At the end come a summary table for all four networks and the total number of
-random numbers generated (one per transmission). These files are written to `results/`:
+To keep a copy of the screen output under another name, you can still redirect it:
+
+```sh
+./build/simulation --packets 10000 --seed 42 --verbose > my_report.txt
+```
+
+These files are written to `results/`:
 
 | File | Contents |
 |---|---|
+| report.txt | the full report described above, the same text as on screen |
 | summary.csv | network, destinations, packets, seed, theoretical ETX, simulated mean, standard error, abs and % difference |
 | per_node.csv | average transmissions per packet by each sender |
 | per_destination.csv | average transmissions until each destination has the packet |
