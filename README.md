@@ -156,6 +156,7 @@ Options:
 | `--seed S` | seed for the random number generator, 1 to 2147483646 | 42 |
 | `--verbose` | log the first packets of each network step by step | off |
 | `--verbose-packets N` | how many packets `--verbose` logs | 10 |
+| `--log-random` | write every generated random number to `random_numbers.csv` | off |
 | `--examples DIR` | folder with case1.txt ... case4.txt (link probabilities) | examples |
 | `--out DIR` | folder for the CSV files | results |
 
@@ -213,6 +214,19 @@ python -m venv .venv
    original ran on Windows. With a 64-bit `long` (macOS/Linux) the sum would grow
    past 2147483563, which `randomgeneration()` cannot handle: its shuffle-table
    index goes negative and the program crashes.
+
+   One random number is generated per transmission, and the generator runs as
+   one stream through networks 1, 2, 3 and 4 in that order. With `--seed 42`,
+   the values passed are 42, 84, 126, ..., and the first numbers returned are:
+
+   | draw | value passed | random number | network 1 case (A -> B, C) |
+   |---|---|---|---|
+   | 1 | 42 | 0.65541637 | case 2 (B=1 C=0) |
+   | 2 | 84 | 0.20099519 | case 0 (B=0 C=0) |
+   | 3 | 126 | 0.89362240 | case 3 (B=1 C=1) |
+
+   `--verbose` shows each number as it is drawn, and `--log-random` saves all
+   of them to `random_numbers.csv`.
 4. **Forwarding.** The ETX code computes `remaining` and `nextSender` for every
    "who holds the packet" state. The simulation gets copies of both through
    optional arguments added to `calculateRouting`, `calculateCase3` and
@@ -244,8 +258,9 @@ For every network the program prints:
 
 - the case interval table of every sender;
 - with `--verbose`, a step-by-step log of the first packets: holders, sender,
-  random number, the interval it fell in and the case chosen, who received, and
-  the next forwarder;
+  which random number was generated (its draw number, the value passed to
+  `randomgeneration()` and the number returned), the interval it fell in and the
+  case chosen, who received, and the next forwarder;
 - the theoretical ETX next to the simulated average transmissions per packet,
   with a 95% confidence interval, the absolute and % difference, and how many
   standard errors apart they are (more than 3 prints a warning);
@@ -254,7 +269,8 @@ For every network the program prints:
 - for each destination, the average number of transmissions until it first has
   the packet.
 
-At the end comes a summary table for all four networks. These files are written to `results/`:
+At the end come a summary table for all four networks and the total number of
+random numbers generated (one per transmission). These files are written to `results/`:
 
 | File | Contents |
 |---|---|
@@ -264,6 +280,7 @@ At the end comes a summary table for all four networks. These files are written 
 | case_intervals.csv | every sender's cases, probabilities and intervals |
 | running_average.csv | running average after each packet (used for the plot; every packet up to 1000, then about 10000 points) |
 | running_average.png | made by plot_results.py: running average per network with the theoretical ETX as a dashed line |
+| random_numbers.csv | only with `--log-random`: one row per generated number with draw number, network, packet, transmission, sender, value passed to `randomgeneration()`, random number, case, received pattern and receivers (space-separated). About 6 MB for 10000 packets, so git ignores it |
 
 ### Results (10000 packets, seed 42, probabilities from examples/)
 

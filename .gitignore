@@ -3,3 +3,4 @@ build/etx_routing
 build/simulation
 build/simulation.exe
 results/running_average.csv
+results/random_numbers.csv

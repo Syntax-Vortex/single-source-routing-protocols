@@ -73,9 +73,16 @@ long seedAsSigned32(unsigned int value) {
     return (long)value - 4294967296LL;
 }
 
-double drawRandom() {
-    float r = randomgeneration(seedAsSigned32(g_seed));
+// Returns the next random number. If seedUsed is given, it receives the value
+// that was passed to randomgeneration() for this draw.
+static long g_drawCount = 0;        // how many numbers have been generated
+
+double drawRandom(long* seedUsed = 0) {
+    long seedNow = seedAsSigned32(g_seed);
+    float r = randomgeneration(seedNow);
     g_seed = g_seed + g_seedStep;   // seed = seed + time(NULL) in the original
+    g_drawCount++;
+    if (seedUsed != 0) *seedUsed = seedNow;
     return r;
 }
 
@@ -399,8 +406,9 @@ void printIntervalTables(const Network& net, ofstream& csv) {
     }
 }
 
+// randomLog: if not null, every generated random number is written to it.
 bool simulateNetwork(const Network& net, long packets, int verbosePackets,
-                     Result& result) {
+                     Result& result, ofstream* randomLog) {
     int senderCount = (int)net.senders.size();
     int destinationCount = (int)net.destinations.size();
     vector<double> senderTotal(senderCount, 0);
@@ -440,8 +448,21 @@ bool simulateNetwork(const Network& net, long packets, int verbosePackets,
             senderTotal[s] += 1;
 
             // Pick the case: draw r and find the interval that contains it.
-            double r = drawRandom();
+            long seedUsed = 0;
+            double r = drawRandom(&seedUsed);
             int n = findCase(sender, r);
+
+            if (randomLog != 0) {
+                // Receivers are separated by spaces so the CSV keeps its columns.
+                string receivers = receiversText(net, sender, n);
+                for (size_t k = 0; k < receivers.size(); k++) {
+                    if (receivers[k] == ',') receivers[k] = ' ';
+                }
+                *randomLog << g_drawCount << "," << net.id << "," << packet << ","
+                           << transmissions << "," << sender.name << "," << seedUsed
+                           << "," << setprecision(8) << r << "," << n << ","
+                           << caseBits(net, sender, n) << "," << receivers << "\n";
+            }
 
             int newState = state;
             for (int i = 0; i < sender.count; i++) {
@@ -460,6 +481,9 @@ bool simulateNetwork(const Network& net, long packets, int verbosePackets,
                 cout << "  tx " << transmissions << ": holders " << holdersText(net, state)
                      << ", sender " << sender.name << " (remaining ETX "
                      << net.remaining[state] << ")\n";
+                cout << "        random number #" << g_drawCount
+                     << ": randomgeneration(" << seedUsed << ") = "
+                     << setprecision(8) << r << setprecision(6) << "\n";
                 cout << "        r = " << setprecision(8) << r << setprecision(6)
                      << " lies in [" << sender.intervalStart[n] << ", "
                      << sender.intervalEnd[n] << ") -> case " << n << " ("
@@ -516,11 +540,13 @@ bool simulateNetwork(const Network& net, long packets, int verbosePackets,
 
 void printUsage() {
     cout << "Usage: simulation [--packets N] [--seed S] [--verbose] [--verbose-packets N]\n"
-         << "                  [--examples DIR] [--out DIR]\n\n"
+         << "                  [--log-random] [--examples DIR] [--out DIR]\n\n"
          << "  --packets N          packets per network (default 10000)\n"
          << "  --seed S             positive seed for randomgeneration() (default 42)\n"
          << "  --verbose            log the first packets of each network step by step\n"
          << "  --verbose-packets N  how many packets --verbose logs (default 10)\n"
+         << "  --log-random         write every generated random number to\n"
+         << "                       OUT/random_numbers.csv\n"
          << "  --examples DIR       folder with case1.txt..case4.txt (default examples)\n"
          << "  --out DIR            folder for CSV output (default results)\n";
 }
@@ -543,6 +569,7 @@ int main(int argc, char* argv[]) {
     long packets = 10000;
     long seed = 42;
     bool verbose = false;
+    bool logRandom = false;
     long verbosePackets = 10;
     string examplesFolder = "examples";
     string outFolder = "results";
@@ -555,6 +582,8 @@ int main(int argc, char* argv[]) {
             return 0;
         } else if (arg == "--verbose") {
             verbose = true;
+        } else if (arg == "--log-random") {
+            logRandom = true;
         } else if (arg == "--packets" && hasValue) {
             if (!parseLong(argv[++i], packets) || packets < 1) {
                 cerr << "Error: --packets must be a positive whole number.\n";
@@ -614,6 +643,20 @@ int main(int argc, char* argv[]) {
     destinationCsv << fixed << setprecision(6);
     runningCsv << fixed << setprecision(6);
 
+    // Optional log of every random number: which value was passed to
+    // randomgeneration(), the number it returned and the case it selected.
+    ofstream randomCsv;
+    if (logRandom) {
+        randomCsv.open((outFolder + "/random_numbers.csv").c_str());
+        if (!randomCsv) {
+            cerr << "Error: cannot write " << outFolder << "/random_numbers.csv\n";
+            return 1;
+        }
+        randomCsv << "draw,network,packet,transmission,sender,seed_passed,"
+                     "random_number,case,received,receivers\n";
+        randomCsv << fixed;
+    }
+
     cout << "Opportunistic routing simulation: " << packets << " packets per network, seed "
          << seed << "\n";
     setSeed(seed);
@@ -637,7 +680,8 @@ int main(int argc, char* argv[]) {
         }
 
         Result& res = results[id - 1];
-        if (!simulateNetwork(net, packets, (int)verbosePackets, res)) return 1;
+        if (!simulateNetwork(net, packets, (int)verbosePackets, res,
+                             logRandom ? &randomCsv : 0)) return 1;
 
         double difference = res.mean - net.theoreticalETX;
         double percent = 100 * difference / net.theoreticalETX;
@@ -698,8 +742,11 @@ int main(int argc, char* argv[]) {
              << setw(10) << difference << setw(7) << setprecision(3)
              << 100 * difference / net.theoreticalETX << "%" << setprecision(6) << "\n";
     }
+    cout << "\nRandom numbers generated in total: " << g_drawCount
+         << " (one per transmission)\n";
     cout << "\nCSV files written to " << outFolder << "/: summary.csv, per_node.csv, "
-         << "per_destination.csv, case_intervals.csv, running_average.csv\n";
+         << "per_destination.csv, case_intervals.csv, running_average.csv"
+         << (logRandom ? ", random_numbers.csv" : "") << "\n";
 #ifdef _WIN32
     cout << "Plot: .venv\\Scripts\\python plot_results.py --out " << outFolder
          << "   (README: \"To draw the plot\")\n";
