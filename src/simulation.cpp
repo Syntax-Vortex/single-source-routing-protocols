@@ -700,6 +700,12 @@ int main(int argc, char* argv[]) {
     }
     cout << "\nCSV files written to " << outFolder << "/: summary.csv, per_node.csv, "
          << "per_destination.csv, case_intervals.csv, running_average.csv\n";
-    cout << "Plot: python3 plot_results.py --out " << outFolder << "\n";
+#ifdef _WIN32
+    cout << "Plot: .venv\\Scripts\\python plot_results.py --out " << outFolder
+         << "   (README: \"To draw the plot\")\n";
+#else
+    cout << "Plot: .venv/bin/python plot_results.py --out " << outFolder
+         << "   (README: \"To draw the plot\")\n";
+#endif
     return 0;
 }

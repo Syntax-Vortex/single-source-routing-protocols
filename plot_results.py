@@ -4,7 +4,8 @@ Reads results/running_average.csv written by the simulator and saves
 results/running_average.png: one panel per network, the running average
 (blue line) and the theoretical ETX from the existing code (dashed line).
 
-Usage:  python3 plot_results.py [--out results] [--logx]
+Usage (after installing matplotlib in .venv, see README):
+    .venv/bin/python plot_results.py [--out results] [--logx]
 """
 import argparse
 import csv
@@ -16,7 +17,16 @@ try:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 except ImportError:
-    sys.exit("matplotlib is not installed. Run:  python3 -m pip install matplotlib")
+    if os.name == "nt":
+        steps = ("python -m venv .venv\n"
+                 "  .venv\\Scripts\\pip install matplotlib\n"
+                 "  .venv\\Scripts\\python plot_results.py")
+    else:
+        steps = ("python3 -m venv .venv\n"
+                 "  .venv/bin/pip install matplotlib\n"
+                 "  .venv/bin/python plot_results.py")
+    sys.exit("matplotlib is not installed for this Python. From the project folder run:\n  "
+             + steps)
 
 SERIES = "#2a78d6"     # running average
 REFERENCE = "#52514e"  # theoretical ETX line and its label

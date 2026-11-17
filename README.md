@@ -161,11 +161,25 @@ Options:
 
 The same seed and packet count always give the same output.
 
-To draw the plot (needs Python 3 with matplotlib):
+To draw the plot you need Python 3 with matplotlib. Install matplotlib in a
+virtual environment (`.venv`, ignored by git) inside this folder. Homebrew Python
+on macOS and many Linux distributions refuse a plain `pip install` outside one.
+You only need to do this once.
+
+macOS / Linux:
 
 ```sh
-python3 -m pip install matplotlib
-python3 plot_results.py            # reads and writes the results/ folder
+python3 -m venv .venv
+.venv/bin/pip install matplotlib
+.venv/bin/python plot_results.py   # reads and writes the results/ folder
+```
+
+Windows (PowerShell):
+
+```powershell
+python -m venv .venv
+.venv\Scripts\pip install matplotlib
+.venv\Scripts\python plot_results.py
 ```
 
 ### How it works
